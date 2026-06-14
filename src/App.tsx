@@ -1,5 +1,5 @@
 import { useAtom } from "jotai";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { SpotlightProvider, SpotlightTour, useSpotlight } from "react-tourlight";
 
 import { AppHeader } from "./components/AppHeader";
@@ -84,7 +84,13 @@ const AppShell = () => {
     },
   });
 
-  const monthlyCashflow = buildMonthlyCashflow(transactions, selectedFrom);
+  const monthlyCashflow = useMemo(() => {
+    if (!selectedFrom) {
+      return [];
+    }
+
+    return buildMonthlyCashflow(transactions, selectedFrom);
+  }, [selectedFrom, transactions]);
   const liveIndicatorText = getLiveIndicatorText(liveStatus);
 
   if (isDiscoveryLoading) {
