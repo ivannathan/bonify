@@ -15,7 +15,7 @@ import { SpotlightProvider, SpotlightTour, useSpotlight } from "react-tourlight"
 import { HiMiniSignal, HiOutlineBolt, HiOutlineCalendarDays } from "react-icons/hi2";
 
 import { OverviewPanel } from "./components/OverviewPanel";
-import { getDiscovery, getReliability, getTransactions, SSE_BASE_URL } from "./lib/api";
+import { consumeTransactionStream, getDiscovery, getReliability, getTransactions } from "./lib/api";
 import { formatDateLabel } from "./lib/format";
 import {
   applyTransactionEvent,
@@ -79,7 +79,9 @@ const AppShell = () => {
   const [isDiscoveryLoading, setIsDiscoveryLoading] = useState(true);
   const [isReliabilityLoading, setIsReliabilityLoading] = useState(false);
   const [isTransactionsLoading, setIsTransactionsLoading] = useState(false);
-  const [liveStatus, setLiveStatus] = useState<"off" | "connecting" | "live" | "reconnecting">("off");
+  const [liveStatus, setLiveStatus] = useState<
+    "off" | "connecting" | "live" | "reconnecting" | "unavailable"
+  >("off");
   const [reliabilityRefreshKey, setReliabilityRefreshKey] = useState(0);
   const { start } = useSpotlight();
   const reliabilityRefreshTimerRef = useRef<number | null>(null);
@@ -201,63 +203,61 @@ const AppShell = () => {
     }
 
     let closed = false;
-    let eventSource: EventSource | null = null;
     let reconnectTimer: number | null = null;
+    let currentController: AbortController | null = null;
+    let hasConnected = false;
 
-    const attachHandler = (eventName: TransactionEventPayload["type"]) => {
-      eventSource?.addEventListener(eventName, (event) => {
-        const payload = JSON.parse((event as MessageEvent<string>).data) as TransactionEventPayload;
-        handleStreamEvent(payload);
-      });
-    };
-
-    const connect = () => {
+    const scheduleReconnect = (status: "reconnecting" | "unavailable", delay: number) => {
       if (closed) {
         return;
       }
 
-      setLiveStatus(eventSource ? "reconnecting" : "connecting");
-      eventSource = new EventSource(
-        `${SSE_BASE_URL}/api/users/${selectedUserId}/transaction-events`,
-      );
-
-      eventSource.onopen = () => {
-        setLiveStatus("live");
-      };
-
-      attachHandler("TRANSACTION_ADDED");
-      attachHandler("TRANSACTION_UPDATED");
-      attachHandler("TRANSACTION_DELETED");
-
-      eventSource.onmessage = (event) => {
-        const payload = JSON.parse(event.data) as TransactionEventPayload;
-
-        if (payload.type) {
-          handleStreamEvent(payload);
-        }
-      };
-
-      eventSource.onerror = () => {
-        eventSource?.close();
-        eventSource = null;
-
-        if (!closed) {
-          setLiveStatus("reconnecting");
-          reconnectTimer = window.setTimeout(connect, 1500);
-        }
-      };
+      setLiveStatus(status);
+      reconnectTimer = window.setTimeout(() => {
+        void connect();
+      }, delay);
     };
 
-    connect();
+    const connect = async () => {
+      if (closed) {
+        return;
+      }
+
+      currentController?.abort();
+      currentController = new AbortController();
+      setLiveStatus(hasConnected ? "reconnecting" : "connecting");
+
+      try {
+        await consumeTransactionStream(selectedUserId, {
+          signal: currentController.signal,
+          onOpen: () => {
+            hasConnected = true;
+            setLiveStatus("live");
+          },
+          onEvent: handleStreamEvent,
+        });
+
+        if (!closed) {
+          scheduleReconnect("reconnecting", 1500);
+        }
+      } catch (error) {
+        if (isAbortError(error)) {
+          return;
+        }
+
+        scheduleReconnect(hasConnected ? "reconnecting" : "unavailable", hasConnected ? 1500 : 5000);
+      }
+    };
+
+    void connect();
 
     return () => {
       closed = true;
+      currentController?.abort();
 
       if (reconnectTimer) {
         window.clearTimeout(reconnectTimer);
       }
-
-      eventSource?.close();
       setLiveStatus("off");
     };
   }, [handleStreamEvent, liveMode, selectedUserId]);
@@ -277,7 +277,9 @@ const AppShell = () => {
         ? "Connecting"
         : liveStatus === "reconnecting"
           ? "Reconnecting"
-          : "Off";
+          : liveStatus === "unavailable"
+            ? "Unavailable"
+            : "Off";
 
   if (isDiscoveryLoading) {
     return <LoadingScreen label="Loading API discovery and defaults…" />;
@@ -327,6 +329,10 @@ const AppShell = () => {
                   "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold",
                   liveStatus === "live"
                     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : liveStatus === "unavailable"
+                      ? "border-rose-200 bg-rose-50 text-rose-700"
+                      : liveStatus === "reconnecting"
+                        ? "border-amber-200 bg-amber-50 text-amber-700"
                     : "border-slate-200 bg-white text-slate-600",
                 )}
               >

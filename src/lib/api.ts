@@ -1,6 +1,7 @@
 import type {
   DiscoveryResponse,
   ReliabilityResponse,
+  TransactionEventPayload,
   TransactionsResponse,
 } from "../types";
 
@@ -48,3 +49,148 @@ export const getTransactions = (
     `${API_BASE_URL}/api/users/${userId}/transactions?from=${from}&to=${to}`,
     signal,
   );
+
+type StreamHandlers = {
+  signal?: AbortSignal;
+  onOpen?: () => void;
+  onEvent: (payload: TransactionEventPayload) => void;
+};
+
+type WrappedStreamResponse = {
+  statusCode?: number;
+  headers?: Record<string, string>;
+  body?: string;
+  isBase64Encoded?: boolean;
+};
+
+type ParsedSseEvent = {
+  event?: string;
+  data?: string;
+};
+
+const isWrappedStreamResponse = (value: unknown): value is WrappedStreamResponse => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  return "body" in value && typeof (value as WrappedStreamResponse).body === "string";
+};
+
+const parseSseChunk = (chunk: string): ParsedSseEvent[] =>
+  chunk
+    .split(/\r?\n\r?\n/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => {
+      const lines = block.split(/\r?\n/);
+      let eventName: string | undefined;
+      const dataLines: string[] = [];
+
+      for (const line of lines) {
+        if (!line || line.startsWith(":")) {
+          continue;
+        }
+
+        if (line.startsWith("event:")) {
+          eventName = line.slice(6).trim();
+          continue;
+        }
+
+        if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trimStart());
+        }
+      }
+
+      return {
+        event: eventName,
+        data: dataLines.length > 0 ? dataLines.join("\n") : undefined,
+      };
+    })
+    .filter((event) => event.data);
+
+const emitSseEvents = (
+  source: string,
+  onEvent: (payload: TransactionEventPayload) => void,
+) => {
+  for (const event of parseSseChunk(source)) {
+    if (!event.data) {
+      continue;
+    }
+
+    const payload = JSON.parse(event.data) as TransactionEventPayload;
+
+    if (payload.type) {
+      onEvent(payload);
+    }
+  }
+};
+
+export const consumeTransactionStream = async (
+  userId: string,
+  { signal, onOpen, onEvent }: StreamHandlers,
+) => {
+  const response = await fetch(`${SSE_BASE_URL}/api/users/${userId}/transaction-events`, {
+    headers: {
+      Accept: "text/event-stream",
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Stream failed with status ${response.status}`);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    const payload = (await response.json()) as WrappedStreamResponse;
+
+    if (!isWrappedStreamResponse(payload)) {
+      throw new Error("Unexpected JSON response from transaction stream.");
+    }
+
+    if (payload.body === undefined) {
+      throw new Error("Wrapped transaction stream is missing a body.");
+    }
+
+    onOpen?.();
+    emitSseEvents(payload.body, onEvent);
+    return;
+  }
+
+  if (!response.body) {
+    throw new Error("Transaction stream response has no body.");
+  }
+
+  onOpen?.();
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+
+    let separatorIndex = buffer.search(/\r?\n\r?\n/);
+
+    while (separatorIndex !== -1) {
+      const block = buffer.slice(0, separatorIndex);
+      buffer = buffer.slice(separatorIndex + (buffer[separatorIndex] === "\r" ? 4 : 2));
+      emitSseEvents(block, onEvent);
+      separatorIndex = buffer.search(/\r?\n\r?\n/);
+    }
+  }
+
+  buffer += decoder.decode();
+
+  if (buffer.trim()) {
+    emitSseEvents(buffer, onEvent);
+  }
+};
