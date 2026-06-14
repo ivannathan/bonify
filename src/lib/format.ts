@@ -5,7 +5,7 @@ export const formatCurrency = (
   currency: string,
   maximumFractionDigits = 0,
 ) =>
-  new Intl.NumberFormat("en-US", {
+  new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency,
     maximumFractionDigits,
