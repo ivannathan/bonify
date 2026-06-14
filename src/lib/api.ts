@@ -3,7 +3,7 @@ import type {
   ReliabilityResponse,
   TransactionEventPayload,
   TransactionsResponse,
-} from "../types";
+} from "../types/app";
 
 const trimSlash = (value: string) => value.replace(/\/+$/, "");
 

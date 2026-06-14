@@ -1,7 +1,7 @@
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 
-import type { DashboardTab } from "../types";
+import type { DashboardTab } from "../types/app";
 
 export const selectedUserIdAtom = atomWithStorage("reliability-selected-user-id", "");
 export const selectedFromAtom = atomWithStorage("reliability-selected-from", "");

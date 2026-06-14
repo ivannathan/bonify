@@ -8,7 +8,7 @@ import {
   getMerchantDisplay,
   getTransactionSearchValue,
 } from "../lib/scoring";
-import type { Transaction } from "../types";
+import type { Transaction } from "../types/app";
 
 type SortField = "date" | "merchant" | "category" | "amount";
 type DirectionFilter = "all" | "credit" | "debit";

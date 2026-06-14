@@ -16,7 +16,7 @@ import type {
   ScoreSignal,
   Transaction,
   TransactionEventPayload,
-} from "../types";
+} from "../types/app";
 
 export const getScoringWindowStart = (from: string) =>
   format(startOfMonth(subMonths(parseISO(from), 5)), "yyyy-MM-dd");

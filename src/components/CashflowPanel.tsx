@@ -11,7 +11,7 @@ import {
 } from "recharts";
 
 import { formatCurrency, formatRatio } from "../lib/format";
-import type { MonthlyCashflow } from "../types";
+import type { MonthlyCashflow } from "../types/app";
 
 interface CashflowPanelProps {
   currency: string;

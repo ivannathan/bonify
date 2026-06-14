@@ -2,7 +2,7 @@ import clsx from "clsx";
 
 import { formatCurrency, formatDateLabel, formatMetricPercent, formatRatio } from "../lib/format";
 import { buildScoreSignals, getDriverTone } from "../lib/scoring";
-import type { MonthlyCashflow, ReliabilityResponse } from "../types";
+import type { MonthlyCashflow, ReliabilityResponse } from "../types/app";
 
 interface OverviewPanelProps {
   reliability: ReliabilityResponse;

@@ -1,7 +1,7 @@
 import clsx from "clsx";
 
 import { buildNarrativeSignals, buildScoreSignals } from "../lib/scoring";
-import type { MonthlyCashflow, ReliabilityResponse } from "../types";
+import type { MonthlyCashflow, ReliabilityResponse } from "../types/app";
 
 interface ExplanationPanelProps {
   reliability: ReliabilityResponse;
