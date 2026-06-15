@@ -2,7 +2,7 @@ import clsx from "clsx";
 
 import { formatDateLabel } from "../lib/format";
 import { buildScoreSignals } from "../lib/scoring";
-import type { MonthlyCashflow, ReliabilityResponse } from "../types/app";
+import type { ReliabilityResponse } from "../types/app";
 
 interface ScoreBreakdownPanelProps {
   reliability: ReliabilityResponse; 
