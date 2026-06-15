@@ -1,6 +1,6 @@
 import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { getTransactionStreamUrl, validateTransactionStream } from "../lib/api";
+import { openTransactionStream } from "../lib/api";
 import { applyTransactionEvent } from "../lib/scoring";
 import type { Transaction, TransactionEventPayload } from "../types/app";
 
@@ -20,19 +20,27 @@ type RawTransactionEventPayload = Omit<TransactionEventPayload, "type" | "transa
     transactionId?: string;
   };
 
+type StreamEnvelope = {
+  body?: string;
+};
+
 const isTransactionEventType = (value: string): value is TransactionEventType =>
   TRANSACTION_EVENT_TYPES.includes(value as TransactionEventType);
 
-const parseTransactionEventMessage = (
-  eventType: TransactionEventType,
-  message: MessageEvent<string>,
+const normalizeTransactionEventPayload = (
+  rawPayload: string,
+  eventType?: string,
 ): TransactionEventPayload | null => {
   try {
-    const payload = JSON.parse(message.data) as RawTransactionEventPayload;
-    let normalizedType: TransactionEventType = eventType;
+    const payload = JSON.parse(rawPayload) as RawTransactionEventPayload;
+    const fallbackType = eventType && isTransactionEventType(eventType) ? eventType : null;
+    const payloadType = payload.type ?? "";
+    const normalizedType = isTransactionEventType(payloadType)
+      ? payloadType
+      : fallbackType;
 
-    if (isTransactionEventType(payload.type ?? "")) {
-      normalizedType = payload.type as TransactionEventType;
+    if (!normalizedType) {
+      return null;
     }
 
     const normalizedTransactionId = payload.transaction_id ?? payload.transactionId;
@@ -43,8 +51,262 @@ const parseTransactionEventMessage = (
       transaction_id: normalizedTransactionId,
     };
   } catch (error) {
-    console.error(`Invalid SSE payload for ${eventType}:`, error);
+    console.error("Invalid transaction stream payload:", error);
     return null;
+  }
+};
+
+const extractEnvelopeBody = (rawPayload: string) => {
+  try {
+    const payload = JSON.parse(rawPayload) as StreamEnvelope;
+
+    return typeof payload.body === "string" ? payload.body : null;
+  } catch {
+    return null;
+  }
+};
+
+type StreamFrame = {
+  data: string;
+  eventType?: string;
+};
+
+const findSseBoundary = (buffer: string) => {
+  const lfBoundary = buffer.indexOf("\n\n");
+
+  if (lfBoundary !== -1) {
+    return { boundary: lfBoundary, length: 2 };
+  }
+
+  const crlfBoundary = buffer.indexOf("\r\n\r\n");
+
+  if (crlfBoundary !== -1) {
+    return { boundary: crlfBoundary, length: 4 };
+  }
+
+  return null;
+};
+
+const extractSseFrame = (buffer: string): { frame: StreamFrame | null; rest: string } | null => {
+  const trimmedStart = buffer.trimStart();
+
+  if (
+    !trimmedStart.startsWith("event:") &&
+    !trimmedStart.startsWith("data:") &&
+    !trimmedStart.startsWith(":")
+  ) {
+    return null;
+  }
+
+  const boundary = findSseBoundary(buffer);
+
+  if (!boundary) {
+    return null;
+  }
+
+  const block = buffer.slice(0, boundary.boundary);
+  const rest = buffer.slice(boundary.boundary + boundary.length);
+  const lines = block.replace(/\r\n/g, "\n").split("\n");
+  let eventType: string | undefined;
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) {
+      continue;
+    }
+
+    if (line.startsWith("event:")) {
+      eventType = line.slice(6).trim();
+      continue;
+    }
+
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+
+  if (dataLines.length === 0) {
+    return { frame: null, rest };
+  }
+
+  return {
+    frame: {
+      data: dataLines.join("\n"),
+      eventType,
+    },
+    rest,
+  };
+};
+
+const extractJsonFrame = (buffer: string): { frame: StreamFrame; rest: string } | null => {
+  const start = buffer.search(/\S/);
+
+  if (start === -1 || buffer[start] !== "{") {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < buffer.length; index += 1) {
+    const character = buffer[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+
+      if (character === "\"") {
+        inString = false;
+      }
+
+      continue;
+    }
+
+    if (character === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (character === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (character === "}") {
+      depth -= 1;
+
+      if (depth === 0) {
+        return {
+          frame: {
+            data: buffer.slice(start, index + 1),
+          },
+          rest: buffer.slice(index + 1),
+        };
+      }
+    }
+  }
+
+  return null;
+};
+
+const extractStreamFrames = (buffer: string): { frames: StreamFrame[]; rest: string } => {
+  const frames: StreamFrame[] = [];
+  let rest = buffer;
+
+  while (rest.trim().length > 0) {
+    const sseFrame = extractSseFrame(rest);
+
+    if (sseFrame) {
+      if (sseFrame.frame) {
+        frames.push(sseFrame.frame);
+      }
+
+      rest = sseFrame.rest;
+      continue;
+    }
+
+    const jsonFrame = extractJsonFrame(rest);
+
+    if (jsonFrame) {
+      frames.push(jsonFrame.frame);
+      rest = jsonFrame.rest;
+      continue;
+    }
+
+    break;
+  }
+
+  return { frames, rest };
+};
+
+const parseTransactionEventPayloads = (
+  rawPayload: string,
+  eventType?: string,
+): TransactionEventPayload[] => {
+  const normalizedPayload = normalizeTransactionEventPayload(rawPayload, eventType);
+
+  if (normalizedPayload) {
+    return [normalizedPayload];
+  }
+
+  const envelopeBody = extractEnvelopeBody(rawPayload);
+
+  if (!envelopeBody) {
+    return [];
+  }
+
+  const { frames } = extractStreamFrames(envelopeBody);
+
+  return frames
+    .map((frame) => normalizeTransactionEventPayload(frame.data, frame.eventType))
+    .filter((payload): payload is TransactionEventPayload => payload !== null);
+};
+
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      signal.removeEventListener("abort", abortHandler);
+      resolve();
+    }, ms);
+
+    const abortHandler = () => {
+      window.clearTimeout(timeoutId);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+
+    signal.addEventListener("abort", abortHandler, { once: true });
+  });
+
+const streamTransactionEvents = async (
+  userId: string,
+  signal: AbortSignal,
+  onOpen: () => void,
+  onEvent: (payload: TransactionEventPayload) => void,
+) => {
+  const response = await openTransactionStream(userId, { signal });
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  onOpen();
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+
+      if (done) {
+        const finalBuffer = buffer + decoder.decode();
+        const { frames } = extractStreamFrames(finalBuffer);
+
+        for (const frame of frames) {
+          for (const payload of parseTransactionEventPayloads(frame.data, frame.eventType)) {
+            onEvent(payload);
+          }
+        }
+
+        return;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const parsed = extractStreamFrames(buffer);
+      buffer = parsed.rest;
+
+      for (const frame of parsed.frames) {
+        for (const payload of parseTransactionEventPayloads(frame.data, frame.eventType)) {
+          onEvent(payload);
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
   }
 };
 
@@ -109,63 +371,57 @@ export const useLiveTransactions = ({
       return;
     }
 
-    let hasConnected = false;
     const controller = new AbortController();
-    const eventSource = new EventSource(getTransactionStreamUrl(selectedUserId));
+    let hasConnected = false;
 
-    setLiveStatus("connecting");
+    void (async () => {
+      while (!controller.signal.aborted) {
+        setLiveStatus(hasConnected ? "reconnecting" : "connecting");
 
-    eventSource.onopen = () => {
-      hasConnected = true;
-      setLiveStatus("live");
-    };
-
-    eventSource.onerror = () => {
-      if (controller.signal.aborted) {
-        return;
-      }
-
-      if (!hasConnected) {
-        void validateTransactionStream(selectedUserId, { signal: controller.signal }).catch((error) => {
+        try {
+          await streamTransactionEvents(
+            selectedUserId,
+            controller.signal,
+            () => {
+              hasConnected = true;
+              setLiveStatus("live");
+            },
+            handleStreamEvent,
+          );
+        } catch (error) {
           if (isAbortError(error) || controller.signal.aborted) {
             return;
           }
 
-          console.error("Initial SSE connection failed:", error);
-          setLiveStatus("unavailable");
-        });
-        return;
-      }
+          if (!hasConnected) {
+            console.error("Initial transaction stream connection failed:", error);
+            setLiveStatus("unavailable");
+            return;
+          }
 
-      setLiveStatus("reconnecting");
-    };
+          console.error("Transaction stream interrupted:", error);
+        }
 
-    const listeners = TRANSACTION_EVENT_TYPES.map((eventType) => {
-      const listener: EventListener = (rawEvent) => {
-        const event = rawEvent as MessageEvent<string>;
-        const payload = parseTransactionEventMessage(eventType, event);
-
-        if (!payload) {
+        if (controller.signal.aborted) {
           return;
         }
 
-        handleStreamEvent(payload);
-      };
+        setLiveStatus("reconnecting");
 
-      eventSource.addEventListener(eventType, listener);
-      return { eventType, listener };
-    });
+        try {
+          await sleep(1500, controller.signal);
+        } catch (error) {
+          if (isAbortError(error) || controller.signal.aborted) {
+            return;
+          }
+
+          throw error;
+        }
+      }
+    })();
 
     return () => {
       controller.abort();
-      eventSource.onopen = null;
-      eventSource.onerror = null;
-
-      for (const { eventType, listener } of listeners) {
-        eventSource.removeEventListener(eventType, listener);
-      }
-
-      eventSource.close();
       setLiveStatus("off");
     };
   }, [handleStreamEvent, liveMode, selectedUserId]);

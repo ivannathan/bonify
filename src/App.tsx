@@ -110,7 +110,7 @@ const AppShell = () => {
             target: '[data-tour="live-toggle"]',
             title: "Try live transaction updates",
             content:
-              "Turn on Live mode to subscribe to SSE transaction events. The explorer, charts, and score explanation update in place without dropping your current filters.",
+              "Turn on Live mode to subscribe to streaming transaction events. The explorer, charts, and score explanation update in place without dropping your current filters.",
             placement: "bottom",
           },
         ]}

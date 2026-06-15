@@ -68,7 +68,7 @@ bun run preview
   - transaction explorer
   - monthly cashflow timeline
   - human-readable explanation panel
-- Supports live SSE transaction updates behind a user-controlled `Live updates` toggle.
+- Supports live streaming transaction updates behind a user-controlled `Live updates` toggle.
 - Preserves transaction filters and current tab while live updates are applied.
 
 ## Assumptions
@@ -89,7 +89,7 @@ bun run preview
   - Chosen for responsiveness and consistent analyst behavior after load.
   - Trade-off is more work in the browser and higher memory use.
 
-- SSE updates mutate the local transaction collection and trigger a debounced reliability refetch:
+- Streaming updates mutate the local transaction collection and trigger a debounced reliability refetch:
   - Chosen because the score is backend-owned and should not be recomputed client-side as source of truth.
   - Trade-off is an extra network request after live events.
 
@@ -103,7 +103,7 @@ bun run preview
 ## Limitations
 
 - The score breakdown is partly inferred because the backend only returns the final score, metrics, and textual drivers, not exact component point allocations.
-- SSE behavior was implemented against the documented event names and payload contract; if the stream sends unusual heartbeat or malformed events, the client currently ignores only what it can safely parse.
+- Stream handling is implemented against the documented event names and payload contract; if the stream sends unusual heartbeat or malformed events, the client currently ignores only what it can safely parse.
 - Large datasets are handled with virtualization in the table, but all transactions in the scoring window still live in memory.
 - The current app uses one main dashboard route and does not include deep-linkable URL state for selected tab, user, filters, or date.
 - No dedicated test suite has been added yet.
@@ -117,7 +117,7 @@ bun run preview
   - App shell
   - discovery bootstrap
   - reliability + transaction fetching
-  - SSE subscription lifecycle
+  - live stream subscription lifecycle
   - tab switching
   - top-level loading/error/empty states
 
@@ -128,10 +128,10 @@ bun run preview
   - `ExplanationPanel.tsx`
 
 - [src/lib](/Users/ivan/Code/ins/bonify/src/lib)
-  - `api.ts`: REST and SSE base URL helpers
+  - `api.ts`: REST and stream base URL helpers
   - `categories.ts`: transaction categorization and essential-expense tagging
   - `format.ts`: formatting utilities
-  - `scoring.ts`: derived views, score signal shaping, SSE transaction patching
+  - `scoring.ts`: derived views, score signal shaping, transaction event patching
 
 - [src/state/app.ts](/Users/ivan/Code/ins/bonify/src/state/app.ts)
   - small global atoms for app-level UI state
@@ -176,7 +176,7 @@ Scaling strategy:
 
 Live updates:
 
-- SSE is opt-in via toggle
+- Live streaming is opt-in via toggle
 - subscribe to `/api/users/{userId}/transaction-events`
 - patch the local transaction collection incrementally
 - debounce a reliability refetch after updates so score and explanations remain backend-truthful
@@ -193,7 +193,7 @@ Abort behavior:
 - Heavy panels are lazy loaded to reduce initial cost.
 - Shared derivation logic stays out of components so:
   - calculations are easier to reason about
-  - SSE patching is reusable
+  - transaction event patching is reusable
   - component code stays focused on rendering
 
 The main rendering split is:
@@ -246,7 +246,7 @@ Discovery API
             ▼
          UI panels
 
-SSE transaction events
+Streaming transaction events
     └── applyTransactionEvent()
             ├── update local transactions
             └── debounce reliability refetch
@@ -286,7 +286,7 @@ bun run build
 
 ## Next improvements
 
-- Add tests for derivation utilities and SSE reducers.
+- Add tests for derivation utilities and transaction event reducers.
 - Add URL-synced filters and tab state.
 - Add retry controls for failed API requests.
 - Consider self-hosting fonts and adding bundle analysis.

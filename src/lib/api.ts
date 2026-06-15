@@ -51,13 +51,13 @@ type StreamHandlers = {
 export const getTransactionStreamUrl = (userId: string) =>
   `${SSE_BASE_URL}/api/users/${userId}/transaction-events`;
 
-export const validateTransactionStream = async (
+export const openTransactionStream = async (
   userId: string,
   { signal }: StreamHandlers = {},
 ) => {
   const response = await fetch(getTransactionStreamUrl(userId), {
     headers: {
-      Accept: "text/event-stream",
+      Accept: "application/octet-stream, text/event-stream, application/json",
     },
     signal,
   });
@@ -66,4 +66,10 @@ export const validateTransactionStream = async (
     const text = await response.text();
     throw new Error(text || `Stream failed with status ${response.status}`);
   }
+
+  if (!response.body) {
+    throw new Error("Stream response did not include a readable body.");
+  }
+
+  return response;
 };
