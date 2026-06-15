@@ -99,30 +99,61 @@ bun run preview
 
 ### Frontend structure
 
-- [src/App.tsx](/Users/ivan/Code/ins/bonify/src/App.tsx)
+- `src/App.tsx`
   - App shell
+  - URL-synced tab bootstrap and history handling
   - discovery bootstrap
-  - reliability + transaction fetching
-  - SSE subscription lifecycle
-  - tab switching
+  - dashboard data orchestration via hooks
+  - live-tour trigger
   - top-level loading/error/empty states
 
-- [src/components](/Users/ivan/Code/ins/bonify/src/components)
+- `src/components`
+  - `AppHeader.tsx`
+    - top navigation bar for cross-cutting controls
+    - owns the user selector sourced from discovery data
+    - owns the live-mode toggle and compact live connection status chip
+    - does not fetch data itself; receives state and setters from App shell
+  - `DashboardHero.tsx`
+    - top-of-page summary block for the currently selected user
+    - owns the date-range controls, current score badge, and tab strip
+    - enforces simple date guardrails in the UI by constraining input min/max values 
   - `OverviewPanel.tsx`
+    - default landing tab focused on fast score inspection
+    - renders the circular reliability index gauge and score band summary
+    - computes and displays KPI cards such as average income, average expenses, coverage ratio, good months, and negative-balance days
+    - surfaces backend-provided textual drivers and classifies them into positive vs risk styling
+  - `ScoreBreakdownPanel.tsx`
+    - dedicated tab for score derivation transparency
+    - renders the four published score families as card-style progress bars 
   - `TransactionExplorer.tsx`
+    - analyst workflow tab for inspecting the raw transaction set in the active date window
+    - owns client-side search, category filtering, direction filtering, and sort state
+    - uses `useDeferredValue` so free-text search stays responsive while typing
+    - uses `@tanstack/react-virtual` to render only visible rows while keeping the full filtered dataset available in memory
+    - formats merchant display, category labels, and signed amounts for tabular review
   - `CashflowPanel.tsx`
+    - month-level trend view built from derived `monthlyCashflow`
+    - combines Recharts bars and a line to show income, expenses, and net trend together
+    - includes a supporting month-by-month table with income, expenses, net, and essential-expense coverage ratio
+    - stays presentational by relying on precomputed monthly buckets from `scoring.ts`
   - `ExplanationPanel.tsx`
+    - narrative interpretation tab aimed at non-technical review 
+    - closes with the composite score so the narrative and the numeric result stay visually tied together
 
-- [src/lib](/Users/ivan/Code/ins/bonify/src/lib)
+- `src/hooks`
+  - `useDashboardData.ts`: discovery, reliability, and transaction fetch lifecycle
+  - `useLiveTransactions.ts`: SSE connection lifecycle, event normalization, local data patching
+
+- `src/lib`
   - `api.ts`: REST and SSE base URL helpers
   - `categories.ts`: transaction categorization and essential-expense tagging
   - `format.ts`: formatting utilities
   - `scoring.ts`: derived views, score signal shaping, SSE transaction patching
 
-- [src/state/app.ts](/Users/ivan/Code/ins/bonify/src/state/app.ts)
+- `src/state/app.ts`
   - small global atoms for app-level UI state
 
-- [src/types.ts](/Users/ivan/Code/ins/bonify/src/types.ts)
+- `src/types/app.ts`
   - shared API and derived-view typing
 
 ### State management decisions
@@ -130,7 +161,7 @@ bun run preview
 Jotai is used only for small, shared UI state:
 
 - selected user
-- selected scoring date
+- selected date range
 - active tab
 - live mode toggle
 - first-run tour persistence
@@ -146,17 +177,17 @@ Reasoning:
 Discovery:
 
 - Fetch `GET /`
-- derive default user and default date from the real API response
+- derive default user and clamp persisted date values to the API `data_range`
 
 Primary dashboard data:
 
-- Fetch reliability and transactions in parallel with `Promise.all`
-- reliability: `GET /api/users/{userId}/reliability?from=...`
-- transactions: `GET /api/users/{userId}/transactions?from=windowStart&to=selectedFrom`
+- reliability and transactions are fetched in separate effects
+- reliability: `GET /api/users/{userId}/reliability?from=selectedTo`
+- transactions: `GET /api/users/{userId}/transactions?from=selectedFrom&to=selectedTo`
 
 Scaling strategy:
 
-- Fetch the full scoring window once
+- Fetch the full selected date window once
 - sort/filter/search in memory
 - virtualize the transaction list for rendering performance
 
@@ -177,6 +208,7 @@ Abort behavior:
 - `AppShell` owns orchestration.
 - Panels are presentational and consume already-shaped data.
 - Heavy panels are lazy loaded to reduce initial cost.
+- `OverviewPanel` is eager-loaded because it is the default tab.
 - Shared derivation logic stays out of components so:
   - calculations are easier to reason about
   - SSE patching is reusable
@@ -184,7 +216,8 @@ Abort behavior:
 
 The main rendering split is:
 
-- overview: high-level score + metrics + driver visualization
+- overview: high-level score, KPI cards, and backend driver summaries
+- score breakdown: visualized four-signal score derivation
 - transactions: operational inspection workflow
 - cashflow: trend and month-level stability view
 - explanation: non-technical narrative and score rationale
@@ -197,13 +230,16 @@ The main rendering split is:
 App
 └── SpotlightProvider
     └── AppShell
-        ├── Header / Controls
+        ├── AppHeader
         │   ├── User selector
-        │   ├── Date selector
         │   └── Live toggle
-        ├── Tabs
+        ├── DashboardHero
+        │   ├── Date range controls
+        │   ├── Current score summary
+        │   └── Tabs
         └── Active Panel
             ├── OverviewPanel
+            ├── ScoreBreakdownPanel
             ├── TransactionExplorer
             ├── CashflowPanel
             └── ExplanationPanel
@@ -213,13 +249,13 @@ App
 
 ```text
 Discovery API
-    └── defaults userId + from
+    └── defaults userId + date range
             │
             ▼
       AppShell state
             │
-            ├── fetch reliability
-            ├── fetch transactions
+            ├── fetch reliability for selectedTo
+            ├── fetch transactions for selectedFrom..selectedTo
             │
             ▼
     local dashboard data state
@@ -244,6 +280,7 @@ SSE transaction events
 Jotai atoms
   - selectedUserId
   - selectedFrom
+  - selectedTo
   - activeTab
   - liveMode
   - liveTourSeen
@@ -256,7 +293,7 @@ React local state in AppShell
   - live connection status
 
 Derived state
-  - scoring window start
+  - URL-normalized active tab
   - monthly cashflow
   - score signal visualization
   - explanation narrative
