@@ -33,19 +33,6 @@ bun install
 bun run dev
 ```
 
-The app uses these env files:
-
-- [.env.local](/Users/ivan/Code/ins/bonify/.env.local)
-- [.env.development](/Users/ivan/Code/ins/bonify/.env.development)
-- [.env.production](/Users/ivan/Code/ins/bonify/.env.production)
-
-Current values:
-
-```env
-VITE_API_BASE_URL=https://wydokyegph.execute-api.eu-central-1.amazonaws.com
-VITE_SSE_BASE_URL=https://vpjjdvoeej5izlqy3nnpllmyua0idsrp.lambda-url.eu-central-1.on.aws
-```
-
 ### Production build
 
 ```bash
@@ -69,7 +56,7 @@ bun run preview
   - monthly cashflow timeline
   - human-readable explanation panel
 - Supports live SSE transaction updates behind a user-controlled `Live updates` toggle.
-- Preserves transaction filters and current tab while live updates are applied.
+- Preserves transaction filters and current tab.
 
 ## Assumptions
 
@@ -105,9 +92,8 @@ bun run preview
 - The score breakdown is partly inferred because the backend only returns the final score, metrics, and textual drivers, not exact component point allocations.
 - SSE behavior was implemented against the documented event names and payload contract; if the stream sends unusual heartbeat or malformed events, the client currently ignores only what it can safely parse.
 - Large datasets are handled with virtualization in the table, but all transactions in the scoring window still live in memory.
-- The current app uses one main dashboard route and does not include deep-linkable URL state for selected tab, user, filters, or date.
 - No dedicated test suite has been added yet.
-- Google Fonts are imported from the network in CSS; for stricter production environments these should be self-hosted.
+- Fonts are imported from the network in CSS; for stricter production environments these should be self-hosted.
 
 ## Architecture Notes
 
