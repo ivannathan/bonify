@@ -230,14 +230,20 @@ The main rendering split is:
 App
 └── SpotlightProvider
     └── AppShell
+        ├── SpotlightTour
         ├── AppHeader
         │   ├── User selector
-        │   └── Live toggle
+        │   ├── Live toggle
+        │   └── Live status chip
         ├── DashboardHero
         │   ├── Date range controls
         │   ├── Current score summary
         │   └── Tabs
-        └── Active Panel
+        ├── ScreenState
+        │   ├── LoadingScreen
+        │   ├── ErrorScreen
+        │   └── EmptyScreen
+        └── Active Panel (inside Suspense)
             ├── OverviewPanel
             ├── ScoreBreakdownPanel
             ├── TransactionExplorer
@@ -248,6 +254,14 @@ App
 ### Data flow
 
 ```text
+URL search param (?view=...)
+    └── normalize activeTab
+            │
+            ▼
+      AppShell state
+            │
+            └── DashboardHero tab controls
+
 Discovery API
     └── defaults userId + date range
             │
@@ -256,17 +270,15 @@ Discovery API
             │
             ├── fetch reliability for selectedTo
             ├── fetch transactions for selectedFrom..selectedTo
-            │
-            ▼
-    local dashboard data state
-            │
             ├── buildMonthlyCashflow()
             ├── buildScoreSignals()
-            ├── buildNarrativeSignals()
-            └── transaction filters/sort/search
+            └── buildNarrativeSignals()
             │
             ▼
          UI panels
+            │
+            └── transaction filters/sort/search
+                (inside TransactionExplorer)
 
 SSE transaction events
     └── applyTransactionEvent()
@@ -290,27 +302,13 @@ React local state in AppShell
   - reliability payload
   - transactions collection
   - loading/error flags
-  - live connection status
+  - reliabilityRefreshKey
 
 Derived state
   - URL-normalized active tab
+  - live connection status
   - monthly cashflow
   - score signal visualization
   - explanation narrative
 ```
 
-## Verification
-
-Build verified with:
-
-```bash
-bun run build
-```
-
-## Next improvements
-
-- Add tests for derivation utilities and SSE reducers.
-- Add URL-synced filters and tab state.
-- Add retry controls for failed API requests.
-- Consider self-hosting fonts and adding bundle analysis.
-- Consider server-driven pagination fallback for larger-than-expected scoring windows.
