@@ -16,6 +16,7 @@ import {
   selectedFromAtom,
   selectedUserIdAtom,
 } from "./state/app";
+import { isDashboardTab, type DashboardTab } from "./types/app";
 
 const TransactionExplorer = lazy(async () => {
   const module = await import("./components/TransactionExplorer");
@@ -32,6 +33,26 @@ const ExplanationPanel = lazy(async () => {
   return { default: module.ExplanationPanel };
 });
 
+const DEFAULT_DASHBOARD_TAB: DashboardTab = "overview";
+
+const getDashboardTabFromSearch = (search: string): DashboardTab => {
+  const view = new URLSearchParams(search).get("view");
+  return view && isDashboardTab(view) ? view : DEFAULT_DASHBOARD_TAB;
+};
+
+const getDashboardUrlForTab = (tab: DashboardTab): string => {
+  const params = new URLSearchParams(window.location.search);
+
+  if (tab === DEFAULT_DASHBOARD_TAB) {
+    params.delete("view");
+  } else {
+    params.set("view", tab);
+  }
+
+  const nextSearch = params.toString();
+  return `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+};
+
 const AppShell = () => {
   const [selectedUserId, setSelectedUserId] = useAtom(selectedUserIdAtom);
   const [selectedFrom, setSelectedFrom] = useAtom(selectedFromAtom);
@@ -40,6 +61,37 @@ const AppShell = () => {
   const [liveTourSeen, setLiveTourSeen] = useAtom(liveTourSeenAtom);
   const [reliabilityRefreshKey, setReliabilityRefreshKey] = useState(0);
   const { start } = useSpotlight();
+
+  useEffect(() => {
+    const initialTab = getDashboardTabFromSearch(window.location.search);
+    setActiveTab(initialTab);
+
+    const normalizedUrl = getDashboardUrlForTab(initialTab);
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+    if (normalizedUrl !== currentUrl) {
+      window.history.replaceState(window.history.state, "", normalizedUrl);
+    }
+
+    const handlePopState = () => {
+      setActiveTab(getDashboardTabFromSearch(window.location.search));
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [setActiveTab]);
+
+  const handleActiveTabChange = (tab: DashboardTab) => {
+    setActiveTab(tab);
+
+    const nextUrl = getDashboardUrlForTab(tab);
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+    if (nextUrl !== currentUrl) {
+      window.history.pushState(window.history.state, "", nextUrl);
+    }
+  };
+
   const {
     discovery,
     discoveryError,
@@ -139,7 +191,7 @@ const AppShell = () => {
             reliability={reliability}
             selectedFrom={selectedFrom}
             selectedUserId={selectedUserId}
-            setActiveTab={setActiveTab}
+            setActiveTab={handleActiveTabChange}
             windowStart={windowStart}
           />
 

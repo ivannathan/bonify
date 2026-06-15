@@ -1,6 +1,11 @@
 export type ScoreBand = "LOW" | "MEDIUM" | "HIGH";
 
-export type DashboardTab = "overview" | "transactions" | "cashflow" | "explanation";
+export const dashboardTabs = ["overview", "transactions", "cashflow", "explanation"] as const;
+
+export type DashboardTab = (typeof dashboardTabs)[number];
+
+export const isDashboardTab = (value: string): value is DashboardTab =>
+  dashboardTabs.includes(value as DashboardTab);
 
 export interface DiscoveryResponse {
   name: string;

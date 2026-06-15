@@ -1,14 +1,14 @@
 import clsx from "clsx";
 
 import { formatDateLabel } from "../lib/format";
-import type { DashboardTab, ReliabilityResponse } from "../types/app";
+import { dashboardTabs, type DashboardTab, type ReliabilityResponse } from "../types/app";
 
-const tabs: Array<{ id: DashboardTab; label: string }> = [
-  { id: "overview", label: "Overview" },
-  { id: "transactions", label: "Transactions" },
-  { id: "cashflow", label: "Cashflow" },
-  { id: "explanation", label: "Explanation" },
-];
+const tabLabels: Record<DashboardTab, string> = {
+  overview: "Overview",
+  transactions: "Transactions",
+  cashflow: "Cashflow",
+  explanation: "Explanation",
+};
 
 type DashboardHeroProps = {
   activeTab: DashboardTab;
@@ -58,19 +58,19 @@ export const DashboardHero = ({
       </div>
 
       <div className="mt-8 flex flex-wrap gap-3 border-b border-slate-200">
-        {tabs.map((tab) => (
+        {dashboardTabs.map((tab) => (
           <button
-            key={tab.id}
+            key={tab}
             type="button"
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => setActiveTab(tab)}
             className={clsx(
               "border-b-2 px-5 py-4 text-lg font-semibold transition",
-              activeTab === tab.id
+              activeTab === tab
                 ? "border-amber-400 text-slate-950"
                 : "border-transparent text-slate-400 hover:text-slate-700",
             )}
           >
-            {tab.label}
+            {tabLabels[tab]}
           </button>
         ))}
       </div>
