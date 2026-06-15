@@ -5,6 +5,7 @@ import { SpotlightProvider, SpotlightTour, useSpotlight } from "react-tourlight"
 import { AppHeader } from "./components/AppHeader";
 import { DashboardHero } from "./components/DashboardHero";
 import { OverviewPanel } from "./components/OverviewPanel";
+import { ScoreBreakdownPanel } from "./components/ScoreBreakdownPanel";
 import { EmptyScreen, ErrorScreen, LoadingScreen } from "./components/ScreenState";
 import { useDashboardData } from "./hooks/useDashboardData";
 import { getLiveIndicatorText, useLiveTransactions } from "./hooks/useLiveTransactions";
@@ -226,6 +227,11 @@ const AppShell = () => {
                   monthlyCashflow={monthlyCashflow}
                   selectedFrom={selectedFrom}
                   selectedTo={selectedTo}
+                />
+              ) : null}
+              {activeTab === "score-breakdown" ? (
+                <ScoreBreakdownPanel
+                  reliability={reliability} 
                 />
               ) : null}
               {activeTab === "transactions" ? (

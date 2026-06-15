@@ -1,7 +1,7 @@
 import clsx from "clsx";
 
 import { formatCurrency, formatDateLabel, formatMetricPercent, formatRatio } from "../lib/format";
-import { buildScoreSignals, getDriverTone } from "../lib/scoring";
+import { getDriverTone } from "../lib/scoring";
 import type { MonthlyCashflow, ReliabilityResponse } from "../types/app";
 
 interface OverviewPanelProps {
@@ -11,20 +11,12 @@ interface OverviewPanelProps {
   selectedTo: string;
 }
 
-const toneClassMap: Record<string, string> = {
-  amber: "bg-amber-400",
-  emerald: "bg-emerald-500",
-  blue: "bg-blue-500",
-  violet: "bg-violet-500",
-};
-
 export const OverviewPanel = ({
   reliability,
   monthlyCashflow,
   selectedFrom,
   selectedTo,
 }: OverviewPanelProps) => {
-  const scoreSignals = buildScoreSignals(reliability);
   const avgIncome =
     monthlyCashflow.reduce((sum, month) => sum + month.income, 0) /
     Math.max(monthlyCashflow.length, 1);
@@ -105,49 +97,6 @@ export const OverviewPanel = ({
               value={`${formatDateLabel(selectedFrom, "MMM d")} - ${formatDateLabel(selectedTo, "MMM d")}`}
               detail={formatDateLabel(selectedTo, "yyyy")}
             />
-          </div>
-
-          <div className="card-surface p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="eyebrow">Score Drivers</p>
-                <p className="mt-2 text-sm text-slate-500">
-                  The API exposes the final score and metrics. The chart below scales the three documented metrics and uses the remainder as the resilience adjustment.
-                </p>
-              </div>
-              <div className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">
-                Reliability recalculated to {formatDateLabel(reliability.from)}
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              {scoreSignals.map((signal) => {
-                const ratio = ((signal.points + (signal.id === "resilience_adjustments" ? 20 : 0)) / (signal.maxPoints + (signal.id === "resilience_adjustments" ? 20 : 0))) * 100;
-
-                return (
-                  <div key={signal.id} className="rounded-3xl border border-slate-200 bg-white/70 p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h3 className="text-base font-semibold text-slate-900">{signal.label}</h3>
-                        <p className="mt-1 text-sm text-slate-500">{signal.description}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-semibold text-slate-950">
-                          {signal.points}
-                          <span className="text-sm text-slate-400">/{signal.maxPoints}</span>
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className={clsx("h-full rounded-full", toneClassMap[signal.tone])}
-                        style={{ width: `${Math.max(4, Math.min(100, ratio))}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         </section>
       </div>

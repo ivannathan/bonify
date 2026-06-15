@@ -1,6 +1,12 @@
 export type ScoreBand = "LOW" | "MEDIUM" | "HIGH";
 
-export const dashboardTabs = ["overview", "transactions", "cashflow", "explanation"] as const;
+export const dashboardTabs = [
+  "overview",
+  "score-breakdown",
+  "transactions",
+  "cashflow",
+  "explanation",
+] as const;
 
 export type DashboardTab = (typeof dashboardTabs)[number];
 

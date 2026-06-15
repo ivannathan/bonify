@@ -6,6 +6,7 @@ import { dashboardTabs, type DashboardTab, type ReliabilityResponse } from "../t
 
 const tabLabels: Record<DashboardTab, string> = {
   overview: "Overview",
+  "score-breakdown": "Score Breakdown",
   transactions: "Transactions",
   cashflow: "Cashflow",
   explanation: "Explanation",
