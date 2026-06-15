@@ -1,11 +1,45 @@
 import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
 
-import { consumeTransactionStream } from "../lib/api";
+import { getTransactionStreamUrl, validateTransactionStream } from "../lib/api";
 import { applyTransactionEvent } from "../lib/scoring";
 import type { Transaction, TransactionEventPayload } from "../types/app";
 
 const isAbortError = (error: unknown) =>
   error instanceof DOMException && error.name === "AbortError";
+
+const TRANSACTION_EVENT_TYPES = [
+  "TRANSACTION_ADDED",
+  "TRANSACTION_UPDATED",
+  "TRANSACTION_DELETED",
+] as const;
+
+type TransactionEventType = (typeof TRANSACTION_EVENT_TYPES)[number];
+
+const isTransactionEventType = (value: string): value is TransactionEventType =>
+  TRANSACTION_EVENT_TYPES.includes(value as TransactionEventType);
+
+const parseTransactionEventMessage = (
+  eventType: TransactionEventType,
+  message: MessageEvent<string>,
+): TransactionEventPayload | null => {
+  try {
+    const payload = JSON.parse(message.data) as Omit<TransactionEventPayload, "type"> &
+      Partial<Pick<TransactionEventPayload, "type">>;
+    let normalizedType: TransactionEventType = eventType;
+
+    if (isTransactionEventType(payload.type ?? "")) {
+      normalizedType = payload.type as TransactionEventType;
+    }
+
+    return {
+      ...payload,
+      type: normalizedType,
+    };
+  } catch (error) {
+    console.error(`Invalid SSE payload for ${eventType}:`, error);
+    return null;
+  }
+};
 
 export type LiveStatus = "off" | "connecting" | "live" | "reconnecting" | "unavailable";
 
@@ -68,63 +102,63 @@ export const useLiveTransactions = ({
       return;
     }
 
-    let closed = false;
-    let reconnectTimer: number | null = null;
-    let currentController: AbortController | null = null;
     let hasConnected = false;
+    const controller = new AbortController();
+    const eventSource = new EventSource(getTransactionStreamUrl(selectedUserId));
 
-    const scheduleReconnect = (status: "reconnecting" | "unavailable", delay: number) => {
-      if (closed) {
-        return;
-      }
+    setLiveStatus("connecting");
 
-      setLiveStatus(status);
-      reconnectTimer = window.setTimeout(() => {
-        void connect();
-      }, delay);
+    eventSource.onopen = () => {
+      hasConnected = true;
+      setLiveStatus("live");
     };
 
-    const connect = async () => {
-      if (closed) {
+    eventSource.onerror = () => {
+      if (controller.signal.aborted) {
         return;
       }
 
-      currentController?.abort();
-      currentController = new AbortController();
-      setLiveStatus(hasConnected ? "reconnecting" : "connecting");
+      if (!hasConnected) {
+        void validateTransactionStream(selectedUserId, { signal: controller.signal }).catch((error) => {
+          if (isAbortError(error) || controller.signal.aborted) {
+            return;
+          }
 
-      try {
-        await consumeTransactionStream(selectedUserId, {
-          signal: currentController.signal,
-          onOpen: () => {
-            hasConnected = true;
-            setLiveStatus("live");
-          },
-          onEvent: handleStreamEvent,
+          console.error("Initial SSE connection failed:", error);
+          setLiveStatus("unavailable");
         });
+        return;
+      }
 
-        if (!closed) {
-          scheduleReconnect("reconnecting", 1500);
-        }
-      } catch (error) {
-        if (isAbortError(error)) {
+      setLiveStatus("reconnecting");
+    };
+
+    const listeners = TRANSACTION_EVENT_TYPES.map((eventType) => {
+      const listener: EventListener = (rawEvent) => {
+        const event = rawEvent as MessageEvent<string>;
+        const payload = parseTransactionEventMessage(eventType, event);
+
+        if (!payload) {
           return;
         }
 
-        scheduleReconnect(hasConnected ? "reconnecting" : "unavailable", hasConnected ? 1500 : 5000);
-      }
-    };
+        handleStreamEvent(payload);
+      };
 
-    void connect();
+      eventSource.addEventListener(eventType, listener);
+      return { eventType, listener };
+    });
 
     return () => {
-      closed = true;
-      currentController?.abort();
+      controller.abort();
+      eventSource.onopen = null;
+      eventSource.onerror = null;
 
-      if (reconnectTimer) {
-        window.clearTimeout(reconnectTimer);
+      for (const { eventType, listener } of listeners) {
+        eventSource.removeEventListener(eventType, listener);
       }
 
+      eventSource.close();
       setLiveStatus("off");
     };
   }, [handleStreamEvent, liveMode, selectedUserId]);
