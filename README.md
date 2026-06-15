@@ -203,6 +203,14 @@ Abort behavior:
 - `AbortController` is used in effects
 - aborted requests are explicitly ignored so React cleanup does not surface false API errors
 
+### Important SSE note
+
+- The current SSE endpoint `https://vpjjdvoeej5izlqy3nnpllmyua0idsrp.lambda-url.eu-central-1.on.aws/api/users/{user}/transaction-events` is not working as expected
+- In the current condition, the frontend request establishes but never reaches `EventSource.onopen`
+- The reason is because the response does not expose the expected `Content-Type: text/event-stream` headers; it comes back as `application/octet-stream`
+- Because the browser never recognizes the response as a valid SSE stream, `eventSource.onopen` is never invoked
+- As a result, the client `liveStatus` never transitions to `live`
+
 ### Component design approach
 
 - `AppShell` owns orchestration.
@@ -266,22 +274,32 @@ Discovery API
     └── defaults userId + date range
             │
             ▼
-      AppShell state
+      useDashboardData()
             │
             ├── fetch reliability for selectedTo
             ├── fetch transactions for selectedFrom..selectedTo
-            ├── buildMonthlyCashflow()
-            ├── buildScoreSignals()
-            └── buildNarrativeSignals()
+            ├── own discovery/reliability/transactions payloads
+            └── own loading/error flags
             │
             ▼
-         UI panels
+         AppShell
             │
-            └── transaction filters/sort/search
-                (inside TransactionExplorer)
+            ├── buildMonthlyCashflow()
+            └── render active panel
+                │
+                ├── ScoreBreakdownPanel
+                │   └── buildScoreSignals()
+                ├── ExplanationPanel
+                │   ├── buildScoreSignals()
+                │   └── buildNarrativeSignals()
+                └── TransactionExplorer
+                    └── local filters/sort/search state
+                        (query, category, direction, sortField, sortOrder)
 
-SSE transaction events
-    └── applyTransactionEvent()
+SSE live mode
+    └── useLiveTransactions()
+            │
+            ├── own liveStatus
             ├── update local transactions
             └── debounce reliability refetch
 ```
@@ -298,17 +316,30 @@ Jotai atoms
   - liveTourSeen
 
 React local state in AppShell
+  - reliabilityRefreshKey
+
+React local state in useDashboardData()
   - discovery payload
   - reliability payload
   - transactions collection
   - loading/error flags
-  - reliabilityRefreshKey
+
+React local state in useLiveTransactions()
+  - liveStatus
+  - reliability refresh debounce timer
+
+React local state in TransactionExplorer
+  - query
+  - category
+  - direction
+  - sortField
+  - sortOrder
 
 Derived state
   - URL-normalized active tab
-  - live connection status
   - monthly cashflow
+  - transaction category options
+  - filtered/sorted transaction rows
   - score signal visualization
   - explanation narrative
 ```
-
