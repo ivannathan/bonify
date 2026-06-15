@@ -7,7 +7,8 @@ import type { MonthlyCashflow, ReliabilityResponse } from "../types/app";
 interface OverviewPanelProps {
   reliability: ReliabilityResponse;
   monthlyCashflow: MonthlyCashflow[];
-  windowStart: string;
+  selectedFrom: string;
+  selectedTo: string;
 }
 
 const toneClassMap: Record<string, string> = {
@@ -20,7 +21,8 @@ const toneClassMap: Record<string, string> = {
 export const OverviewPanel = ({
   reliability,
   monthlyCashflow,
-  windowStart,
+  selectedFrom,
+  selectedTo,
 }: OverviewPanelProps) => {
   const scoreSignals = buildScoreSignals(reliability);
   const avgIncome =
@@ -100,8 +102,8 @@ export const OverviewPanel = ({
             />
             <MetricCard
               label="Scoring Window"
-              value={`${formatDateLabel(windowStart, "MMM d")} - ${formatDateLabel(reliability.from, "MMM d")}`}
-              detail={formatDateLabel(reliability.from, "yyyy")}
+              value={`${formatDateLabel(selectedFrom, "MMM d")} - ${formatDateLabel(selectedTo, "MMM d")}`}
+              detail={formatDateLabel(selectedTo, "yyyy")}
             />
           </div>
 
@@ -114,7 +116,7 @@ export const OverviewPanel = ({
                 </p>
               </div>
               <div className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">
-                Window ends {formatDateLabel(reliability.from)}
+                Reliability recalculated to {formatDateLabel(reliability.from)}
               </div>
             </div>
 

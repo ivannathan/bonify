@@ -1,8 +1,7 @@
-import { addMonths, format, parseISO } from "date-fns";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getDiscovery, getReliability, getTransactions } from "../lib/api";
-import { getScoringWindowStart, sortTransactions } from "../lib/scoring";
+import { sortTransactions } from "../lib/scoring";
 import type { DiscoveryResponse, ReliabilityResponse, Transaction } from "../types/app";
 
 const isAbortError = (error: unknown) =>
@@ -10,19 +9,40 @@ const isAbortError = (error: unknown) =>
 
 type UseDashboardDataOptions = {
   selectedFrom: string;
+  selectedTo: string;
   selectedUserId: string;
   reliabilityRefreshKey: number;
   setSelectedFrom: (value: string | ((current: string) => string)) => void;
+  setSelectedTo: (value: string | ((current: string) => string)) => void;
   setSelectedUserId: (value: string | ((current: string) => string)) => void;
+};
+
+const normalizeDateInRange = (value: string, fallback: string, minimum: string, maximum: string) => {
+  if (!value) {
+    return fallback;
+  }
+
+  if (value < minimum) {
+    return minimum;
+  }
+
+  if (value > maximum) {
+    return maximum;
+  }
+
+  return value;
 };
 
 export const useDashboardData = ({
   selectedFrom,
+  selectedTo,
   selectedUserId,
   reliabilityRefreshKey,
   setSelectedFrom,
+  setSelectedTo,
   setSelectedUserId,
 }: UseDashboardDataOptions) => {
+  const latestRangeRef = useRef({ selectedFrom, selectedTo });
   const [discovery, setDiscovery] = useState<DiscoveryResponse | null>(null);
   const [reliability, setReliability] = useState<ReliabilityResponse | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -33,18 +53,7 @@ export const useDashboardData = ({
   const [isReliabilityLoading, setIsReliabilityLoading] = useState(false);
   const [isTransactionsLoading, setIsTransactionsLoading] = useState(false);
 
-  const windowStart = useMemo(
-    () => (selectedFrom ? getScoringWindowStart(selectedFrom) : ""),
-    [selectedFrom],
-  );
-
-  const minimumFromDate = useMemo(() => {
-    if (!discovery) {
-      return "";
-    }
-
-    return format(addMonths(parseISO(discovery.data_range.from), 5), "yyyy-MM-dd");
-  }, [discovery]);
+  latestRangeRef.current = { selectedFrom, selectedTo };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -54,9 +63,31 @@ export const useDashboardData = ({
 
     getDiscovery(controller.signal)
       .then((response) => {
+        const { selectedFrom: currentFrom, selectedTo: currentTo } = latestRangeRef.current;
+        const normalizedFrom = normalizeDateInRange(
+          currentFrom,
+          response.data_range.from,
+          response.data_range.from,
+          response.data_range.to,
+        );
+        const normalizedTo = normalizeDateInRange(
+          currentTo,
+          response.data_range.to,
+          response.data_range.from,
+          response.data_range.to,
+        );
+
         setDiscovery(response);
         setSelectedUserId((current) => current || response.available_users[0] || "");
-        setSelectedFrom((current) => current || response.data_range.to);
+
+        if (normalizedFrom > normalizedTo) {
+          setSelectedFrom(response.data_range.from);
+          setSelectedTo(response.data_range.to);
+          return;
+        }
+
+        setSelectedFrom(normalizedFrom);
+        setSelectedTo(normalizedTo);
       })
       .catch((error: Error) => {
         if (isAbortError(error)) {
@@ -70,27 +101,21 @@ export const useDashboardData = ({
       });
 
     return () => controller.abort();
-  }, [setSelectedFrom, setSelectedUserId]);
+  }, [setSelectedFrom, setSelectedTo, setSelectedUserId]);
 
   useEffect(() => {
-    if (!selectedUserId || !selectedFrom) {
+    if (!selectedUserId || !selectedTo) {
       return;
     }
 
     const controller = new AbortController();
 
     setIsReliabilityLoading(true);
-    setIsTransactionsLoading(true);
     setReliabilityError(null);
-    setTransactionsError(null);
 
-    Promise.all([
-      getReliability(selectedUserId, selectedFrom, controller.signal),
-      getTransactions(selectedUserId, windowStart, selectedFrom, controller.signal),
-    ])
-      .then(([reliabilityResponse, transactionsResponse]) => {
+    getReliability(selectedUserId, selectedTo, controller.signal)
+      .then((reliabilityResponse) => {
         setReliability(reliabilityResponse);
-        setTransactions(sortTransactions(transactionsResponse.transactions));
       })
       .catch((error: Error) => {
         if (isAbortError(error)) {
@@ -99,15 +124,42 @@ export const useDashboardData = ({
 
         const message = error.message || "Unable to load dashboard data.";
         setReliabilityError(message);
-        setTransactionsError(message);
       })
       .finally(() => {
         setIsReliabilityLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [reliabilityRefreshKey, selectedTo, selectedUserId]);
+
+  useEffect(() => {
+    if (!selectedUserId || !selectedFrom || !selectedTo || selectedFrom > selectedTo) {
+      setTransactions([]);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    setIsTransactionsLoading(true);
+    setTransactionsError(null);
+
+    getTransactions(selectedUserId, selectedFrom, selectedTo, controller.signal)
+      .then((transactionsResponse) => {
+        setTransactions(sortTransactions(transactionsResponse.transactions));
+      })
+      .catch((error: Error) => {
+        if (isAbortError(error)) {
+          return;
+        }
+
+        setTransactionsError(error.message || "Unable to load transactions.");
+      })
+      .finally(() => {
         setIsTransactionsLoading(false);
       });
 
     return () => controller.abort();
-  }, [reliabilityRefreshKey, selectedFrom, selectedUserId, windowStart]);
+  }, [selectedFrom, selectedTo, selectedUserId]);
 
   return {
     discovery,
@@ -115,12 +167,10 @@ export const useDashboardData = ({
     isDiscoveryLoading,
     isReliabilityLoading,
     isTransactionsLoading,
-    minimumFromDate,
     reliability,
     reliabilityError,
     setTransactions,
     transactions,
     transactionsError,
-    windowStart,
   };
 };

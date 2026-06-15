@@ -53,9 +53,9 @@ export type LiveStatus = "off" | "connecting" | "live" | "reconnecting" | "unava
 type UseLiveTransactionsOptions = {
   liveMode: boolean;
   selectedFrom: string;
+  selectedTo: string;
   selectedUserId: string;
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
-  windowStart: string;
   onReliabilityRefresh: () => void;
 };
 
@@ -73,9 +73,9 @@ export const getLiveIndicatorText = (status: LiveStatus) =>
 export const useLiveTransactions = ({
   liveMode,
   selectedFrom,
+  selectedTo,
   selectedUserId,
   setTransactions,
-  windowStart,
   onReliabilityRefresh,
 }: UseLiveTransactionsOptions) => {
   const [liveStatus, setLiveStatus] = useState<LiveStatus>("off");
@@ -96,8 +96,8 @@ export const useLiveTransactions = ({
   const handleStreamEvent = useEffectEvent((payload: TransactionEventPayload) => {
     setTransactions((current) =>
       applyTransactionEvent(current, payload, {
-        from: windowStart,
-        to: selectedFrom,
+        from: selectedFrom,
+        to: selectedTo,
       }),
     );
     scheduleReliabilityRefresh();

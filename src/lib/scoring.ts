@@ -4,9 +4,8 @@ import {
   format,
   isAfter,
   isBefore,
+  isValid,
   parseISO,
-  startOfMonth,
-  subMonths,
 } from "date-fns";
 
 import { getTransactionCategory, isEssentialTransaction } from "./categories";
@@ -17,9 +16,6 @@ import type {
   Transaction,
   TransactionEventPayload,
 } from "../types/app";
-
-export const getScoringWindowStart = (from: string) =>
-  format(startOfMonth(subMonths(parseISO(from), 5)), "yyyy-MM-dd");
 
 export const sortTransactions = (transactions: Transaction[]) => {
   return [...transactions].sort((left, right) => {
@@ -42,9 +38,15 @@ export const sortTransactions = (transactions: Transaction[]) => {
 export const buildMonthlyCashflow = (
   transactions: Transaction[],
   from: string,
+  to: string,
 ) => {
-  const start = parseISO(getScoringWindowStart(from));
-  const end = parseISO(from);
+  const start = parseISO(from);
+  const end = parseISO(to);
+
+  if (!isValid(start) || !isValid(end) || isAfter(start, end)) {
+    return [];
+  }
+
   const months = eachMonthOfInterval({ start, end: endOfMonth(end) });
 
   const buckets = new Map<string, MonthlyCashflow>(

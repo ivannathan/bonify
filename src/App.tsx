@@ -14,6 +14,7 @@ import {
   liveModeAtom,
   liveTourSeenAtom,
   selectedFromAtom,
+  selectedToAtom,
   selectedUserIdAtom,
 } from "./state/app";
 import { isDashboardTab, type DashboardTab } from "./types/app";
@@ -56,6 +57,7 @@ const getDashboardUrlForTab = (tab: DashboardTab): string => {
 const AppShell = () => {
   const [selectedUserId, setSelectedUserId] = useAtom(selectedUserIdAtom);
   const [selectedFrom, setSelectedFrom] = useAtom(selectedFromAtom);
+  const [selectedTo, setSelectedTo] = useAtom(selectedToAtom);
   const [activeTab, setActiveTab] = useAtom(activeTabAtom);
   const [liveMode, setLiveMode] = useAtom(liveModeAtom);
   const [liveTourSeen, setLiveTourSeen] = useAtom(liveTourSeenAtom);
@@ -92,24 +94,40 @@ const AppShell = () => {
     }
   };
 
+  const handleSelectedFromChange = (nextFrom: string) => {
+    setSelectedFrom(nextFrom);
+
+    if (selectedTo && nextFrom > selectedTo) {
+      setSelectedTo(nextFrom);
+    }
+  };
+
+  const handleSelectedToChange = (nextTo: string) => {
+    setSelectedTo(nextTo);
+
+    if (selectedFrom && nextTo < selectedFrom) {
+      setSelectedFrom(nextTo);
+    }
+  };
+
   const {
     discovery,
     discoveryError,
     isDiscoveryLoading,
     isReliabilityLoading,
     isTransactionsLoading,
-    minimumFromDate,
     reliability,
     reliabilityError,
     setTransactions,
     transactions,
     transactionsError,
-    windowStart,
   } = useDashboardData({
     selectedFrom,
+    selectedTo,
     selectedUserId,
     reliabilityRefreshKey,
     setSelectedFrom,
+    setSelectedTo,
     setSelectedUserId,
   });
 
@@ -128,21 +146,21 @@ const AppShell = () => {
   const { liveStatus } = useLiveTransactions({
     liveMode,
     selectedFrom,
+    selectedTo,
     selectedUserId,
     setTransactions,
-    windowStart,
     onReliabilityRefresh: () => {
       setReliabilityRefreshKey((current) => current + 1);
     },
   });
 
   const monthlyCashflow = useMemo(() => {
-    if (!selectedFrom) {
+    if (!selectedFrom || !selectedTo) {
       return [];
     }
 
-    return buildMonthlyCashflow(transactions, selectedFrom);
-  }, [selectedFrom, transactions]);
+    return buildMonthlyCashflow(transactions, selectedFrom, selectedTo);
+  }, [selectedFrom, selectedTo, transactions]);
   const liveIndicatorText = getLiveIndicatorText(liveStatus);
 
   if (isDiscoveryLoading) {
@@ -176,23 +194,24 @@ const AppShell = () => {
           liveMode={liveMode}
           liveStatus={liveStatus}
           liveStatusLabel={liveIndicatorText}
-          minimumFromDate={minimumFromDate}
-          selectedFrom={selectedFrom}
           selectedUserId={selectedUserId}
           setLiveMode={setLiveMode}
-          setSelectedFrom={setSelectedFrom}
           setSelectedUserId={setSelectedUserId}
         />
 
         <main className="mx-auto max-w-[1600px] px-6 py-8 lg:px-10">
           <DashboardHero
             activeTab={activeTab}
+            dataRangeFrom={discovery.data_range.from}
+            dataRangeTo={discovery.data_range.to}
             isReliabilityLoading={isReliabilityLoading}
             reliability={reliability}
             selectedFrom={selectedFrom}
+            selectedTo={selectedTo}
             selectedUserId={selectedUserId}
             setActiveTab={handleActiveTabChange}
-            windowStart={windowStart}
+            setSelectedFrom={handleSelectedFromChange}
+            setSelectedTo={handleSelectedToChange}
           />
 
           {reliabilityError && !reliability ? (
@@ -205,7 +224,8 @@ const AppShell = () => {
                 <OverviewPanel
                   reliability={reliability}
                   monthlyCashflow={monthlyCashflow}
-                  windowStart={windowStart}
+                  selectedFrom={selectedFrom}
+                  selectedTo={selectedTo}
                 />
               ) : null}
               {activeTab === "transactions" ? (
