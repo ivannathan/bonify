@@ -343,3 +343,7 @@ Derived state
   - score signal visualization
   - explanation narrative
 ```
+
+## AI usage disclosure
+
+I built this project using an AI coding agent as an accelerator. I used it to scaffold parts of the implementation, iterate on UI and documentation, and speed up repetitive tasks. I was responsible for the technical direction, reviewing outputs, validating behavior, fixing incorrect suggestions, and making the final architectural and product decisions. All submitted work was verified by me, and I take full ownership of the final result.
