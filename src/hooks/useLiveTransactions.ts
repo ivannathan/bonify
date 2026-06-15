@@ -15,6 +15,11 @@ const TRANSACTION_EVENT_TYPES = [
 
 type TransactionEventType = (typeof TRANSACTION_EVENT_TYPES)[number];
 
+type RawTransactionEventPayload = Omit<TransactionEventPayload, "type" | "transaction_id"> &
+  Partial<Pick<TransactionEventPayload, "type" | "transaction_id">> & {
+    transactionId?: string;
+  };
+
 const isTransactionEventType = (value: string): value is TransactionEventType =>
   TRANSACTION_EVENT_TYPES.includes(value as TransactionEventType);
 
@@ -23,17 +28,19 @@ const parseTransactionEventMessage = (
   message: MessageEvent<string>,
 ): TransactionEventPayload | null => {
   try {
-    const payload = JSON.parse(message.data) as Omit<TransactionEventPayload, "type"> &
-      Partial<Pick<TransactionEventPayload, "type">>;
+    const payload = JSON.parse(message.data) as RawTransactionEventPayload;
     let normalizedType: TransactionEventType = eventType;
 
     if (isTransactionEventType(payload.type ?? "")) {
       normalizedType = payload.type as TransactionEventType;
     }
 
+    const normalizedTransactionId = payload.transaction_id ?? payload.transactionId;
+
     return {
       ...payload,
       type: normalizedType,
+      transaction_id: normalizedTransactionId,
     };
   } catch (error) {
     console.error(`Invalid SSE payload for ${eventType}:`, error);

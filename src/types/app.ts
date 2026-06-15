@@ -60,7 +60,6 @@ export interface TransactionEventPayload {
   type: "TRANSACTION_ADDED" | "TRANSACTION_UPDATED" | "TRANSACTION_DELETED";
   transaction?: Transaction;
   transaction_id?: string;
-  transactionId?: string;
 }
 
 export interface MonthlyCashflow {

@@ -239,10 +239,8 @@ export const applyTransactionEvent = (
   const map = new Map(currentTransactions.map((transaction) => [transaction.id, transaction]));
 
   if (event.type === "TRANSACTION_DELETED") {
-    const transactionId = event.transaction_id ?? event.transactionId;
-
-    if (transactionId) {
-      map.delete(transactionId);
+    if (event.transaction_id) {
+      map.delete(event.transaction_id);
     }
 
     return sortTransactions([...map.values()]);
