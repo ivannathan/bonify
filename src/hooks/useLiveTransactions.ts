@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 
 import { getTransactionStreamUrl, validateTransactionStream } from "../lib/api";
 import { applyTransactionEvent } from "../lib/scoring";
@@ -81,34 +81,18 @@ export const useLiveTransactions = ({
   const [liveStatus, setLiveStatus] = useState<LiveStatus>("off");
   const reliabilityRefreshTimerRef = useRef<number | null>(null);
 
-  const scheduleReliabilityRefresh = useEffectEvent(() => {
-    if (reliabilityRefreshTimerRef.current) {
-      window.clearTimeout(reliabilityRefreshTimerRef.current);
-    }
-
-    reliabilityRefreshTimerRef.current = window.setTimeout(() => {
-      startTransition(() => {
-        onReliabilityRefresh();
-      });
-    }, 350);
-  });
-
-  const handleStreamEvent = useEffectEvent((payload: TransactionEventPayload) => {
-    setTransactions((current) =>
-      applyTransactionEvent(current, payload, {
-        from: selectedFrom,
-        to: selectedTo,
-      }),
-    );
-    scheduleReliabilityRefresh();
+  const propsRef = useRef({ selectedFrom, selectedTo, onReliabilityRefresh, setTransactions });
+  useEffect(() => {
+    propsRef.current = { selectedFrom, selectedTo, onReliabilityRefresh, setTransactions };
   });
 
   useEffect(() => {
     if (!liveMode || !selectedUserId) {
-      setLiveStatus("off");
+      setLiveStatus((current) => (current !== "off" ? "off" : current));
       return;
     }
 
+    let isValidating = false;
     let hasConnected = false;
     const controller = new AbortController();
     const eventSource = new EventSource(getTransactionStreamUrl(selectedUserId));
@@ -126,18 +110,51 @@ export const useLiveTransactions = ({
       }
 
       if (!hasConnected) {
-        void validateTransactionStream(selectedUserId, { signal: controller.signal }).catch((error) => {
-          if (isAbortError(error) || controller.signal.aborted) {
-            return;
-          }
+        if (isValidating) {
+          return;
+        }
 
-          console.error("Initial SSE connection failed:", error);
-          setLiveStatus("unavailable");
-        });
+        isValidating = true;
+
+        void validateTransactionStream(selectedUserId, { signal: controller.signal })
+          .catch((error) => {
+            if (isAbortError(error) || controller.signal.aborted) {
+              return;
+            }
+
+            console.error("Initial SSE connection failed:", error);
+            setLiveStatus("unavailable");
+            eventSource.close();
+          })
+          .finally(() => {
+            isValidating = false;
+          });
+
         return;
       }
 
       setLiveStatus("reconnecting");
+    };
+
+    const handleStreamEvent = (payload: TransactionEventPayload) => {
+      const { selectedFrom: from, selectedTo: to, onReliabilityRefresh: refresh, setTransactions: setTx } = propsRef.current;
+
+      setTx((current) =>
+        applyTransactionEvent(current, payload, {
+          from,
+          to,
+        }),
+      );
+
+      if (reliabilityRefreshTimerRef.current) {
+        window.clearTimeout(reliabilityRefreshTimerRef.current);
+      }
+
+      reliabilityRefreshTimerRef.current = window.setTimeout(() => {
+        startTransition(() => {
+          refresh();
+        });
+      }, 350);
     };
 
     const listeners = TRANSACTION_EVENT_TYPES.map((eventType) => {
@@ -166,9 +183,8 @@ export const useLiveTransactions = ({
       }
 
       eventSource.close();
-      setLiveStatus("off");
     };
-  }, [handleStreamEvent, liveMode, selectedUserId]);
+  }, [liveMode, selectedUserId]); 
 
   useEffect(() => {
     return () => {
