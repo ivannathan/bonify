@@ -203,14 +203,6 @@ Abort behavior:
 - `AbortController` is used in effects
 - aborted requests are explicitly ignored so React cleanup does not surface false API errors
 
-### Important SSE note
-
-- The current SSE endpoint `https://vpjjdvoeej5izlqy3nnpllmyua0idsrp.lambda-url.eu-central-1.on.aws/api/users/{user}/transaction-events` is not working as expected
-- In the current condition, the frontend request establishes but never reaches `EventSource.onopen`
-- The reason is because the response does not expose the expected `Content-Type: text/event-stream` headers; it comes back as `application/octet-stream`
-- Because the browser never recognizes the response as a valid SSE stream, `eventSource.onopen` is never invoked
-- As a result, the client `liveStatus` never transitions to `live`
-
 ### Component design approach
 
 - `AppShell` owns orchestration.
